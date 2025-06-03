@@ -7,3 +7,5 @@ edition = "2024"
 anyhow = "1.0.98"
 clap = { version = "4.5.39", features = ["derive"] }
 flate2 = "1.1.1"
+hex = "0.4.3"
+sha1 = "0.10.6"
