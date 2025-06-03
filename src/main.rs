@@ -2,8 +2,8 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use flate2::read::ZlibDecoder;
 use std::ffi::CStr;
-use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read};
+use std::{fs, io};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -79,27 +79,51 @@ fn main() -> anyhow::Result<()> {
                 ".git/objects file header has invalid size: '{size}'"
             ))?;
 
-            buf.clear();
-            buf.resize(size, 0);
-            decoder
-                .read_exact(&mut buf[..])
-                .context("read true contents of .git/objects file")?;
-
-            let len = decoder
-                .read(&mut [0])
-                .context("validate EOF in .git/objects file")?;
-
-            anyhow::ensure!(len == 0, ".git/objects file has {len} trailing bytes");
-
-            let stdout = std::io::stdout();
-            let mut stdout = stdout.lock();
+            // NOTE: decoder.take will not error if the decompressed file is too long, but will at least not
+            // spam stdout and be vulnerable to a zip bomb
+            let mut decoder = decoder.take(size as u64);
 
             match kind {
-                Kind::Blob => stdout
-                    .write_all(&buf)
-                    .context("write object contents to stdout")?,
+                Kind::Blob => {
+                    let stdout = io::stdout();
+                    let mut stdout = stdout.lock();
+
+                    let len = io::copy(&mut decoder, &mut stdout)
+                        .context("write .git/objects into stdout")?;
+
+                    anyhow::ensure!(
+                        len == size as u64,
+                        ".git/objects file was not the expected size (expected: {size}, actual: {len})"
+                    )
+                }
             }
         }
     }
     Ok(())
 }
+
+// one way to limit the size of a reader
+
+/*
+struct LimitReader<R> {
+    reader: R,
+    limit: usize,
+}
+
+impl<R> Read for LimitReader<R>
+where
+    R: Read,
+{
+    fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
+        if buf.len() > self.limit {
+            buf = &mut buf[..self.limit + 1];
+        }
+        let len = self.reader.read(buf)?;
+        if len > self.limit {
+            return Err(io::Error::new(Other, "too many bytes"));
+        }
+        self.limit -= len;
+        Ok(len)
+    }
+}
+*/
