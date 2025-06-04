@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::{fs, io};
 
 pub(crate) mod commands;
+pub(crate) mod objects;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -28,6 +29,12 @@ enum Command {
 
         file: PathBuf,
     },
+    LsTree {
+        #[clap(long)]
+        name_only: bool,
+
+        tree_hash: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -41,11 +48,18 @@ fn main() -> anyhow::Result<()> {
             fs::write(".git/HEAD", "ref: refs/heads/main\n")?;
             println!("Initialized git repository in the current directory.");
         }
+
         Command::CatFile {
             pretty_print,
             object_hash,
         } => commands::cat_file::invoke(pretty_print, &object_hash)?,
+
         Command::HashObject { write, file } => commands::hash_object::invoke(write, &file)?,
+
+        Command::LsTree {
+            name_only,
+            tree_hash,
+        } => commands::ls_tree::invoke(name_only, &tree_hash)?,
     }
     Ok(())
 }
@@ -69,29 +83,3 @@ where
         todo!()
     }
 }
-
-// One way to limit the size of a reader. Alternative on line 92
-
-/*
-struct LimitReader<R> {
-    reader: R,
-    limit: usize,
-}
-
-impl<R> Read for LimitReader<R>
-where
-    R: Read,
-{
-    fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
-        if buf.len() > self.limit {
-            buf = &mut buf[..self.limit + 1];
-        }
-        let len = self.reader.read(buf)?;
-        if len > self.limit {
-            return Err(io::Error::new(Other, "too many bytes"));
-        }
-        self.limit -= len;
-        Ok(len)
-    }
-}
-*/
